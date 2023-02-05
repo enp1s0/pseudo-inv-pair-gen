@@ -166,7 +166,7 @@ void generate_matrix_pair(
 }
 
 int main(int argc, char** argv) {
-	if (argc <= 4) {
+	if (argc <= 3) {
 		std::fprintf(stderr, "Usage: %s [N (N x N)] [dtype: fp32/fp64] [seed]\n", argv[0]);
 		return 1;
 	}
