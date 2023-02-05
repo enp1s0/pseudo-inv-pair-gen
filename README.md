@@ -4,8 +4,8 @@ Generating a pair of rand matrix and pseudo-inv manrix.
 
 ## Build
 ```bash
-git clone git@github.com:enp1s0/pseud-inv-pair-gen.git
-cd pseud-inv-pair-gen
+git clone git@github.com:enp1s0/pseudo-inv-pair-gen.git
+cd pseudo-inv-pair-gen
 make
 ```
 
