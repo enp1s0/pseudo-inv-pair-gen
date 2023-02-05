@@ -62,6 +62,60 @@ void V_x_rS_x_Ut(
 }
 
 template <class T>
+__global__ void check_inv_kernel(
+		T* const inv,
+		const std::size_t m,
+		const std::size_t k,
+		const T* const a_ptr, const std::size_t lda,
+		const T* const b_ptr, const std::size_t ldb
+		) {
+	const auto tid = threadIdx.x + blockDim.x * blockIdx.x;
+	if (tid >= m * m) {
+		return;
+	}
+
+	const auto mi = tid % m;
+	const auto ni = tid / m;
+
+	T c = 0;
+	for (std::size_t ki = 0; ki < k; ki++) {
+		c += a_ptr[mi + ki * lda] * b_ptr[ki + ni * ldb];
+	}
+
+	if (mi == ni) {
+		c -= 1;
+	}
+
+	atomicAdd(inv, c * c);
+}
+
+template <class T>
+T check_inv(
+		const std::size_t m,
+		const std::size_t k,
+		const T* const a_ptr, const std::size_t lda,
+		const T* const b_ptr, const std::size_t ldb
+		) {
+	auto inv_uptr = cutf::memory::get_managed_unique_ptr<T>(1);
+	*inv_uptr.get() = 0;
+
+	const auto block_size = 256u;
+	const auto grid_size = (m * m + block_size - 1) / block_size;
+
+	CUTF_CHECK_ERROR(cudaDeviceSynchronize());
+	check_inv_kernel<T>
+		<<<grid_size, block_size>>>(
+				inv_uptr.get(),
+				m, k,
+				a_ptr, lda,
+				b_ptr, ldb
+				);
+	CUTF_CHECK_ERROR(cudaDeviceSynchronize());
+
+	return std::sqrt(*inv_uptr.get() / k);
+}
+
+template <class T>
 void generate_matrix_pair(
 		const std::size_t m,
 		const std::size_t n,
@@ -143,24 +197,15 @@ void generate_matrix_pair(
 	std::printf("A^t : %s\n", file_name_stem.c_str());
 	std::printf("A   : %s\n", inv_file_name_stem.c_str());
 	if (check) {
-		auto mat_a_uptr = cutf::memory::get_host_unique_ptr<T>(m * n);
-		auto mat_b_uptr = cutf::memory::get_host_unique_ptr<T>(m * n);
+		auto mat_a_uptr = cutf::memory::get_managed_unique_ptr<T>(m * n);
+		auto mat_b_uptr = cutf::memory::get_managed_unique_ptr<T>(m * n);
 		mtk::matfile::load_dense(mat_b_uptr.get(), n, file_name_stem);
 		mtk::matfile::load_dense(mat_a_uptr.get(), m, inv_file_name_stem);
 
-		T o = 0;
-#pragma omp marallel for collapse(2) reduction(+: o)
-		for (unsigned i = 0; i < m; i++) {
-			for (unsigned j = 0; j < m; j++) {
-				T c = 0;
-				for (unsigned k = 0; k < n; k++) {
-					c += mat_a_uptr.get()[i + k * m] * mat_b_uptr.get()[k + j * n];
-				}
-				const auto diff = c - (i == j ? 1 : 0);
-				o += diff * diff;
-			}
-		}
-		o = std::sqrt(o / static_cast<T>(n));
+		CUTF_CHECK_ERROR(cudaMemAdvise(mat_a_uptr.get(), m * n, cudaMemAdviseSetReadMostly, 0));
+		CUTF_CHECK_ERROR(cudaMemAdvise(mat_b_uptr.get(), m * n, cudaMemAdviseSetReadMostly, 0));
+
+		const auto o = check_inv(m, n, mat_a_uptr.get(), m, mat_b_uptr.get(), n);
 		std::printf("orth: %e\n", o);
 	}
 }
@@ -176,9 +221,9 @@ int main(int argc, char** argv) {
 	const auto seed = std::stoull(argv[3]);
 
 	if (dtype == "fp32") {
-		generate_matrix_pair<float >(N, N, seed, true);
+		generate_matrix_pair<float >(N, N, seed, 1);
 	} else if(dtype == "fp64") {
-		generate_matrix_pair<double>(N, N, seed, true);
+		generate_matrix_pair<double>(N, N, seed, 1);
 	} else {
 		std::fprintf(stderr, "Error: Unknown dtype (%s)\n", dtype.c_str());
 		return 1;
