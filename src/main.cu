@@ -165,6 +165,22 @@ void generate_matrix_pair(
 	}
 }
 
-int main() {
-	generate_matrix_pair<double>(1lu << 14, 1lu << 14, 0, true);
+int main(int argc, char** argv) {
+	if (argc <= 4) {
+		std::fprintf(stderr, "Usage: %s [N (N x N)] [dtype: fp32/fp64] [seed]\n", argv[0]);
+		return 1;
+	}
+
+	const auto N = std::stoull(argv[1]);
+	const auto dtype = std::string(argv[2]);
+	const auto seed = std::stoull(argv[3]);
+
+	if (dtype == "fp32") {
+		generate_matrix_pair<float >(N, N, seed, true);
+	} else if(dtype == "fp64") {
+		generate_matrix_pair<double>(N, N, seed, true);
+	} else {
+		std::fprintf(stderr, "Error: Unknown dtype (%s)\n", dtype.c_str());
+		return 1;
+	}
 }
