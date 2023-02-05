@@ -1,0 +1,6 @@
+[submodule "src/cutf"]
+	path = src/cutf
+	url = https://github.com/enp1s0/cutf
+[submodule "src/matfile"]
+	path = src/matfile
+	url = https://github.com/enp1s0/matfile
